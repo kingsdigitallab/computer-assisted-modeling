@@ -1,0 +1,72 @@
+Data:
+  1. Model and structure data:
+    1. Conceptual modeling (tech agnostic): {}
+    2. Paradigm/Standard/Formal selection:
+      relational: {}
+      TEI: {}
+      json: {}
+    3. Logical modeling (schema creation):
+      Relational: {}
+      TEI Schema: {}
+      Knowledge Graph: {}
+  2. Pre-process data:
+    1. Extract: {}
+    2. Transform: {}
+    3. Match/lookup:
+      Wikidata: {}
+    4. Augment/enrich data:
+      Entity recognition: {}
+      OCR/HTR: {}
+      Feature extraction: {}
+      RAG interface: {}
+      Model training: {}
+      Model finetuning: {}
+  3. Store data:
+    Provide storage solution for raw data:
+      text: {}
+      audio: {}
+      video: {}
+      images: {}
+      TBS: {}
+    Provide storage solution for project-produced metadata and data models: {}
+  4. Search data/retrieve:
+    Full text search: {}
+    Semantic search: {}
+    Faceted search: {}
+    RAG: {}
+    Produce intermediary assets (e.g. indexes): {}
+  5. Interoperate data:
+    Create API:
+      Linked Open Data: {}
+  6. Edit data:
+    Markdown editor: {}
+    External Editing tools: {}
+    Datasheets: {}
+    Content Management System: {}
+    HTML editor: {}
+    Relational solution (for cases not suitable for datasets nor CMS): {}
+    Graph-based: {}
+    NER annotation in text documents: {}
+    Image annotation: {}
+    Object description: {}
+  7. Explore and discover (Analyse, Validate, Evaluate data parametrically):
+    Provide analysis solutions:
+      Create data visualizations: {}
+      Create discovery dashboard:
+        Support data checks and validation:
+          Dynamic evaluation and validation: {}
+      Text-based Q&A or classification: {}
+      External analysis tools: {}
+    Create analysis workflows: {}
+  8. Browse data (imposed view):
+    External viewing tools: {}
+    Create indexes of entities and other browsing functionalities: {}
+    Create document/record:
+      text editing: {}
+      viewer: {}
+    Create image or other object viewer: {}
+    Create website environment (project contextualisation, communication, dissemination):
+      Baseline environment (static pages, no bespoke design): {}
+      Information architecture, graphic design, layout and stylesheets: {}
+    Create data visualizations:
+      Geomap view: {}
