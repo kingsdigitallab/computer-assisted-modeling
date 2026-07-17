@@ -312,12 +312,6 @@ function assignIds(node) {
 
 function nameIsComment(name) { return !!name && name.charAt(0) === "?"; }
 function isComment(node) { return nameIsComment(node.name); }
-function displayName(name) {
-  let n = String(name);
-  if (n.charAt(0) === "?") n = n.slice(1);
-  if (n.charAt(0) === " ") n = n.slice(1);
-  return n;
-}
 function setName(node, newName) {
   const was = nameIsComment(node.name);
   node.name = newName;
@@ -606,7 +600,7 @@ function wrapLabel(text) {
 /* Compute wrapped lines and bubble dimensions for every node in the hierarchy. */
 function computeBubbleSizes(root) {
   root.descendants().forEach(d => {
-    d._lines = wrapLabel(displayName(d.data.name));
+    d._lines = wrapLabel(d.data.name);
     const maxLen = d._lines.length ? Math.max(...d._lines.map(l => l.length)) : 0;
     d._bw = Math.max(maxLen * CHAR_W + PAD_X * 2, MIN_BUBBLE_W);
     d._bh = d._lines.length * LINE_H + PAD_Y * 2;
