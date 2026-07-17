@@ -450,7 +450,7 @@ const LINE_H = 13;
 const PAD_X = 9;
 const PAD_Y = 6;
 const MIN_BUBBLE_W = 34;
-const RADIAL_GAP = 14;
+const RADIAL_GAP = 36;
 const TANG_GAP = 12;
 
 function initGraph() {
@@ -514,21 +514,47 @@ function computeBubbleSizes(root) {
 }
 
 /* Assign a radius to each depth so adjacent levels never overlap radially and
-   siblings at the busiest level never overlap tangentially. */
+   bubbles within a level never overlap tangentially.
+
+   The radius is derived from the ACTUAL angular gaps produced by d3.tree (not
+   a uniform spread): for every adjacent pair of nodes on a ring we compute the
+   smallest radius at which the two bubbles (using their real widths/heights)
+   just touch, then take the maximum across the ring. This makes dense clusters
+   (e.g. a parent with many children) drive the ring size, so their bubbles no
+   longer collide. Rings below also keep a safe radial gap (maxH + RADIAL_GAP). */
 function computeLevelRadii(root) {
-  const depthCounts = {};
+  const TWO_PI = 2 * Math.PI;
   let maxDepth = 0;
-  root.descendants().forEach(d => {
-    depthCounts[d.depth] = (depthCounts[d.depth] || 0) + 1;
-    if (d.depth > maxDepth) maxDepth = d.depth;
-  });
-  const maxW = Math.max(...root.descendants().map(d => d._bw));
+  root.descendants().forEach(d => { if (d.depth > maxDepth) maxDepth = d.depth; });
+
   const maxH = Math.max(...root.descendants().map(d => d._bh));
+
+  const byDepth = {};
+  root.descendants().forEach(d => {
+    (byDepth[d.depth] ||= []).push(d);
+  });
+  for (const k in byDepth) byDepth[k].sort((a, b) => a.x - b.x);
+
   const radii = [0];
   for (let depth = 1; depth <= maxDepth; depth++) {
-    const tangential = (maxW + TANG_GAP) * (depthCounts[depth] || 1) / (2 * Math.PI);
+    const nodes = byDepth[depth] || [];
+    let maxPairR = 0;
+
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      const b = nodes[(i + 1) % nodes.length];
+      const gap = i === nodes.length - 1 ? (TWO_PI - a.x + b.x) : (b.x - a.x);
+      if (nodes.length === 1 || gap <= 0) continue;
+
+      const halfW = (a._bw + b._bw) / 2 + TANG_GAP;
+      const halfH = (a._bh + b._bh) / 2 + TANG_GAP;
+      const need = Math.sqrt(halfW * halfW + halfH * halfH);
+      const r = need / (2 * Math.sin(gap / 2));
+      if (isFinite(r) && r > maxPairR) maxPairR = r;
+    }
+
     const radial = radii[depth - 1] + maxH + RADIAL_GAP;
-    radii[depth] = Math.max(tangential, radial);
+    radii[depth] = Math.max(maxPairR, radial);
   }
   return radii;
 }
@@ -545,13 +571,13 @@ function renderGraph() {
   const root = d3.hierarchy(d3Data);
 
   computeBubbleSizes(root);
-  const levelRadius = computeLevelRadii(root);
 
   const treeLayout = d3.tree()
     .size([2 * Math.PI, 1])
     .separation((a, b) => (a.parent === b.parent ? 1.6 : 2.6));
 
   treeLayout(root);
+  const levelRadius = computeLevelRadii(root);
   root.descendants().forEach(d => { d.y = levelRadius[d.depth]; });
 
   const linkGen = d3.linkRadial()
