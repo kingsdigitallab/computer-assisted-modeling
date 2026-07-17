@@ -43,7 +43,19 @@ header h1 { font-size: 16px; font-weight: 600; }
 .btn-success { background: #27ae60; color: #fff; }
 .btn-success:hover { background: #219a52; }
 
-.toolbar { display: flex; gap: 8px; }
+.toolbar { display: flex; gap: 8px; align-items: center; }
+
+.comments-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #ecf0f1;
+  cursor: pointer;
+  user-select: none;
+}
+.comments-toggle input { cursor: pointer; }
 
 #container {
   display: flex;
@@ -254,6 +266,7 @@ header h1 { font-size: 16px; font-weight: 600; }
 <header>
   <h1>Component Tree</h1>
   <div class="toolbar">
+    <label class="comments-toggle"><input type="checkbox" id="comments-toggle" checked> Comments</label>
     <button class="btn btn-primary" id="fit-btn">Fit View</button>
     <button class="btn btn-success" id="export-btn">Export YAML</button>
   </div>
@@ -283,6 +296,7 @@ const YAML_URL = "../data/components.yml";
 let treeData = {};
 let selectedNodeId = null;
 let activePane = "tree";
+let showComments = true;
 let idCounter = 0;
 const nodeMap = new Map();
 
@@ -294,6 +308,21 @@ function assignIds(node) {
   node._expanded = true;
   nodeMap.set(node._id, node);
   for (const child of node._children) assignIds(child);
+}
+
+function nameIsComment(name) { return !!name && name.charAt(0) === "?"; }
+function isComment(node) { return nameIsComment(node.name); }
+function displayName(name) {
+  let n = String(name);
+  if (n.charAt(0) === "?") n = n.slice(1);
+  if (n.charAt(0) === " ") n = n.slice(1);
+  return n;
+}
+function setName(node, newName) {
+  const was = nameIsComment(node.name);
+  node.name = newName;
+  renderGraph();
+  if (was !== nameIsComment(newName)) renderTreeEditor();
 }
 
 /* ── YAML Parser ─────────────────────────────────── */
@@ -353,7 +382,8 @@ function serializeYaml(node, depth = 0) {
 function toD3Data(node) {
   const d = { name: node.name, _id: node._id, _orig: node };
   if (node._expanded && node._children && node._children.length > 0) {
-    d.children = node._children.map(toD3Data);
+    const kids = node._children.filter(c => showComments || !isComment(c));
+    if (kids.length > 0) d.children = kids.map(toD3Data);
   }
   return d;
 }
@@ -368,7 +398,8 @@ function renderTreeEditor() {
 }
 
 function buildTreeNode(node, depth) {
-  const hasChildren = node._children && node._children.length > 0;
+  const realChildren = (node._children || []).filter(c => !isComment(c));
+  const hasChildren = realChildren.length > 0;
   const wrapper = document.createElement("div");
 
   const row = document.createElement("div");
@@ -405,10 +436,7 @@ function buildTreeNode(node, depth) {
   });
   label.addEventListener("blur", () => {
     const newName = label.textContent.trim();
-    if (newName && newName !== node.name) {
-      node.name = newName;
-      renderGraph();
-    }
+    if (newName && newName !== node.name) setName(node, newName);
   });
   label.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -468,7 +496,7 @@ function buildTreeNode(node, depth) {
   if (hasChildren && node._expanded) {
     const childContainer = document.createElement("div");
     childContainer.className = "tree-children";
-    for (const child of node._children) {
+    for (const child of realChildren) {
       childContainer.appendChild(buildTreeNode(child, depth + 1));
     }
     wrapper.appendChild(childContainer);
@@ -522,6 +550,7 @@ const PAD_Y = 6;
 const MIN_BUBBLE_W = 34;
 const RADIAL_GAP = 36;
 const TANG_GAP = 12;
+const COMMENT_COLOR = "#f5b041";
 
 function initGraph() {
   const svgEl = document.getElementById("graph-svg");
@@ -577,7 +606,7 @@ function wrapLabel(text) {
 /* Compute wrapped lines and bubble dimensions for every node in the hierarchy. */
 function computeBubbleSizes(root) {
   root.descendants().forEach(d => {
-    d._lines = wrapLabel(d.data.name);
+    d._lines = wrapLabel(displayName(d.data.name));
     const maxLen = d._lines.length ? Math.max(...d._lines.map(l => l.length)) : 0;
     d._bw = Math.max(maxLen * CHAR_W + PAD_X * 2, MIN_BUBBLE_W);
     d._bh = d._lines.length * LINE_H + PAD_Y * 2;
@@ -670,6 +699,7 @@ function renderGraph(fit) {
   nodeGroups.each(function(d) {
     const g = d3.select(this);
     const isRoot = d.depth === 0;
+    const comment = nameIsComment(d.data.name);
     const selected = d.data._id === selectedNodeId;
     const lines = d._lines;
     const bw = d._bw;
@@ -683,7 +713,7 @@ function renderGraph(fit) {
       .attr("height", bh)
       .attr("rx", 8)
       .attr("ry", 8)
-      .attr("fill", isRoot ? "#2c3e50" : (d.children ? "#3498db" : "#95a5a6"))
+      .attr("fill", comment ? COMMENT_COLOR : (isRoot ? "#2c3e50" : (d.children ? "#3498db" : "#95a5a6")))
       .attr("stroke", selected ? "#e74c3c" : "#fff")
       .attr("stroke-width", selected ? 3 : 1.5)
       .on("click", (e) => {
@@ -796,6 +826,19 @@ function addChild(node, opts) {
   startEdit(child._id, editIn);
 }
 
+function addChildComment(node, opts) {
+  const editIn = (opts && opts.editIn) || "graph";
+  const child = { name: "? Comment", children: [], _id: generateId(), _expanded: true, _children: [] };
+  node._children.push(child);
+  node._expanded = true;
+  if (!showComments) { showComments = true; syncCommentsToggle(); }
+  nodeMap.set(child._id, child);
+  renderTreeEditor();
+  renderGraph();
+  selectNode(child._id);
+  startEdit(child._id, editIn);
+}
+
 function addSibling(node, opts) {
   const editIn = (opts && opts.editIn) || "tree";
   if (node === treeData) { addChild(node, opts); return; }
@@ -869,8 +912,7 @@ function commitGraphEdit() {
   const v = input.value.trim();
   hideGraphEdit();
   if (node && v) {
-    node.name = v;
-    renderGraph();
+    setName(node, v);
     selectNode(nodeId);
   }
 }
@@ -885,6 +927,7 @@ function hideGraphEdit() {
 function getVisibleNodes() {
   const ret = [];
   (function walk(n) {
+    if (isComment(n)) return;
     ret.push(n);
     if (n._expanded && n._children) for (const c of n._children) walk(c);
   })(treeData);
@@ -939,6 +982,7 @@ function showContextMenu(x, y, nodeId, where) {
   menu.innerHTML = "";
   const items = [];
   items.push({ label: "Add child", fn: () => addChild(node, { editIn: where }) });
+  if (!isComment(node)) items.push({ label: "Add comment", fn: () => addChildComment(node, { editIn: "graph" }) });
   if (node !== treeData) items.push({ label: "Add sibling", fn: () => addSibling(node, { editIn: where }) });
   items.push({ label: "Rename", fn: () => startEdit(nodeId, where) });
   if (node !== treeData) items.push({ label: "Delete", fn: () => deleteNodeWithConfirm(node), danger: true });
@@ -1004,6 +1048,15 @@ document.getElementById("export-btn").addEventListener("click", () => {
 
 /* ── Fit View Button ─────────────────────────────── */
 document.getElementById("fit-btn").addEventListener("click", () => fitGraph());
+
+/* ── Comments Toggle ─────────────────────────────── */
+function syncCommentsToggle() {
+  document.getElementById("comments-toggle").checked = showComments;
+}
+document.getElementById("comments-toggle").addEventListener("change", (e) => {
+  showComments = e.target.checked;
+  renderGraph();
+});
 
 /* ── Add Root Button ──────────────────────────────── */
 document.getElementById("add-root-btn").addEventListener("click", () => {
