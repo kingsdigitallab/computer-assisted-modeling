@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Component Tree Editor</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+  color: #333;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #2c3e50;
+  color: #ecf0f1;
+  flex-shrink: 0;
+}
+
+header h1 { font-size: 16px; font-weight: 600; }
+
+.btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn-primary { background: #3498db; color: #fff; }
+.btn-primary:hover { background: #2980b9; }
+.btn-success { background: #27ae60; color: #fff; }
+.btn-success:hover { background: #219a52; }
+
+.toolbar { display: flex; gap: 8px; }
+
+#container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+#tree-pane {
+  width: 400px;
+  min-width: 280px;
+  flex-shrink: 0;
+  border-right: 2px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+#tree-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fafafa;
+}
+
+#tree-content {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 0;
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.tree-node:hover { background: #e8f4fd; }
+.tree-node.selected { background: #d4e6f9; font-weight: 600; }
+
+.tree-toggle {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #888;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.tree-toggle:hover { background: #ddd; }
+
+.tree-toggle.leaf { visibility: hidden; }
+
+.tree-label {
+  font-size: 13px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  outline: none;
+  min-width: 40px;
+}
+
+.tree-label:focus {
+  border-color: #3498db;
+  background: #fff;
+}
+
+.tree-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tree-node:hover .tree-actions { opacity: 1; }
+
+.tree-action-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #888;
+}
+
+.tree-action-btn:hover { background: #ddd; color: #333; }
+.tree-action-btn.delete:hover { background: #e74c3c; color: #fff; }
+
+.tree-children { margin-left: 16px; }
+
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.resize-handle:hover { background: #3498db; }
+
+#graph-pane {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+}
+
+#graph-pane svg { width: 100%; height: 100%; }
+
+.node-bubble {
+  cursor: pointer;
+}
+
+.node-bubble:hover { filter: brightness(1.1); }
+
+.node-text {
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+  fill: #fff;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.link {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.5px;
+}
+
+.graph-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  font-size: 11px;
+  color: #999;
+  pointer-events: none;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Component Tree</h1>
+  <div class="toolbar">
+    <button class="btn btn-success" id="export-btn">Export YAML</button>
+  </div>
+</header>
+
+<div id="container">
+  <div id="tree-pane">
+    <div id="tree-header">
+      <span>Tree Editor</span>
+      <button class="btn btn-primary" id="add-root-btn" style="padding:3px 8px;font-size:12px;">+ Root</button>
+    </div>
+    <div id="tree-content"></div>
+  </div>
+  <div class="resize-handle" id="resize-handle"></div>
+  <div id="graph-pane">
+    <svg id="graph-svg"></svg>
+    <div class="graph-hint">Scroll to zoom. Drag to pan. Click nodes to select.</div>
+  </div>
+</div>
+
+<script>
+const YAML_URL = "../data/components.yml";
+
+let treeData = {};
+let selectedNodeId = null;
+let idCounter = 0;
+const nodeMap = new Map();
+
+function generateId() { return "n" + (idCounter++); }
+
+function assignIds(node) {
+  node._id = generateId();
+  node._children = node.children || [];
+  node._expanded = true;
+  nodeMap.set(node._id, node);
+  for (const child of node._children) assignIds(child);
+}
+
+/* ── YAML Parser ─────────────────────────────────── */
+function parseYaml(text) {
+  const lines = text.split("\n");
+  const root = { name: "root", children: [] };
+  const stack = [{ indent: -1, node: root }];
+
+  for (const raw of lines) {
+    if (raw.trim() === "" || raw.trim().startsWith("#")) continue;
+    const indent = raw.search(/\S/);
+    const line = raw.trim();
+
+    let key, val;
+    if (line.endsWith(": {}") || line === "{}") {
+      key = line.replace(/: \{\}$/, "").replace(/\{\}/, "").trim();
+      val = null;
+    } else if (line.endsWith(":")) {
+      key = line.slice(0, -1).trim();
+      val = {};
+    } else if (line.includes(": ")) {
+      const idx = line.indexOf(": ");
+      key = line.slice(0, idx).trim();
+      val = line.slice(idx + 2).trim();
+    } else {
+      key = line;
+      val = null;
+    }
+
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+    const parent = stack[stack.length - 1].node;
+
+    const child = { name: key, children: [] };
+    if (val === null) child.children = [];
+    parent.children.push(child);
+    stack.push({ indent, node: child });
+  }
+
+  if (root.children.length === 1) return root.children[0];
+  return root;
+}
+
+/* ── YAML Serializer ─────────────────────────────── */
+function serializeYaml(node, depth = 0) {
+  const indent = "  ".repeat(depth);
+  if (!node.children || node.children.length === 0) {
+    return `${indent}${node.name}: {}\n`;
+  }
+  let out = `${indent}${node.name}:\n`;
+  for (const child of node.children) {
+    out += serializeYaml(child, depth + 1);
+  }
+  return out;
+}
+
+/* ── Tree Data → D3 hierarchy ────────────────────── */
+function toD3Data(node) {
+  const d = { name: node.name, _id: node._id, _orig: node };
+  if (node._expanded && node._children && node._children.length > 0) {
+    d.children = node._children.map(toD3Data);
+  }
+  return d;
+}
+
+/* ── Tree Editor (Left Pane) ─────────────────────── */
+function renderTreeEditor() {
+  const container = document.getElementById("tree-content");
+  container.innerHTML = "";
+  if (treeData && treeData.name) {
+    container.appendChild(buildTreeNode(treeData, 0));
+  }
+}
+
+function buildTreeNode(node, depth) {
+  const hasChildren = node._children && node._children.length > 0;
+  const wrapper = document.createElement("div");
+
+  const row = document.createElement("div");
+  row.className = "tree-node" + (selectedNodeId === node._id ? " selected" : "");
+  row.style.paddingLeft = (8 + depth * 16) + "px";
+
+  const toggle = document.createElement("span");
+  toggle.className = "tree-toggle" + (hasChildren ? "" : " leaf");
+  toggle.textContent = node._expanded ? "\u25BC" : "\u25B6";
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    node._expanded = !node._expanded;
+    renderTreeEditor();
+    renderGraph();
+  });
+  row.appendChild(toggle);
+
+  const label = document.createElement("span");
+  label.className = "tree-label";
+  label.textContent = node.name;
+  label.contentEditable = true;
+  label.spellcheck = false;
+  label.addEventListener("focus", (e) => {
+    e.stopPropagation();
+    selectNode(node._id);
+  });
+  label.addEventListener("blur", () => {
+    const newName = label.textContent.trim();
+    if (newName && newName !== node.name) {
+      node.name = newName;
+      renderGraph();
+    }
+  });
+  label.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); label.blur(); }
+  });
+  row.appendChild(label);
+
+  const actions = document.createElement("span");
+  actions.className = "tree-actions";
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "tree-action-btn";
+  addBtn.textContent = "+";
+  addBtn.title = "Add child";
+  addBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const child = { name: "New node", children: [], _id: generateId(), _expanded: true, _children: [] };
+    node._children.push(child);
+    node._expanded = true;
+    nodeMap.set(child._id, child);
+    renderTreeEditor();
+    renderGraph();
+  });
+  actions.appendChild(addBtn);
+
+  if (depth > 0) {
+    const delBtn = document.createElement("button");
+    delBtn.className = "tree-action-btn delete";
+    delBtn.textContent = "\u2715";
+    delBtn.title = "Delete node";
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteNode(node._id);
+      renderTreeEditor();
+      renderGraph();
+    });
+    actions.appendChild(delBtn);
+  }
+
+  row.appendChild(actions);
+  wrapper.appendChild(row);
+
+  if (hasChildren && node._expanded) {
+    const childContainer = document.createElement("div");
+    childContainer.className = "tree-children";
+    for (const child of node._children) {
+      childContainer.appendChild(buildTreeNode(child, depth + 1));
+    }
+    wrapper.appendChild(childContainer);
+  }
+
+  return wrapper;
+}
+
+function selectNode(id) {
+  selectedNodeId = id;
+  renderTreeEditor();
+  highlightGraphNode(id);
+}
+
+function deleteNode(id) {
+  if (!treeData) return;
+  if (treeData._id === id) {
+    treeData = { name: "root", children: [], _id: generateId(), _expanded: true, _children: [] };
+    nodeMap.clear();
+    nodeMap.set(treeData._id, treeData);
+    selectedNodeId = null;
+    return;
+  }
+  const removed = removeFromTree(treeData, id);
+  if (removed) nodeMap.delete(id);
+  if (selectedNodeId === id) selectedNodeId = null;
+}
+
+function removeFromTree(node, id) {
+  if (!node._children) return false;
+  const idx = node._children.findIndex(c => c._id === id);
+  if (idx !== -1) { node._children.splice(idx, 1); return true; }
+  for (const child of node._children) {
+    if (removeFromTree(child, id)) return true;
+  }
+  return false;
+}
+
+function findNode(id) { return nodeMap.get(id) || null; }
+
+/* ── Radial Graph (Right Pane) ───────────────────── */
+let svg, gZoom, gLinks, gNodes, zoomBehavior;
+
+const MAX_CHARS = 13;
+const CHAR_W = 6.1;
+const LINE_H = 13;
+const PAD_X = 9;
+const PAD_Y = 6;
+const MIN_BUBBLE_W = 34;
+const RADIAL_GAP = 14;
+const TANG_GAP = 12;
+
+function initGraph() {
+  const svgEl = document.getElementById("graph-svg");
+  svg = d3.select(svgEl);
+  svg.selectAll("*").remove();
+
+  const width = svgEl.clientWidth;
+  const height = svgEl.clientHeight;
+
+  gZoom = svg.append("g");
+  zoomBehavior = d3.zoom()
+    .scaleExtent([0.2, 5])
+    .on("zoom", (e) => gZoom.attr("transform", e.transform));
+  svg.call(zoomBehavior);
+
+  gLinks = gZoom.append("g").attr("class", "links");
+  gNodes = gZoom.append("g").attr("class", "nodes");
+
+  svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(width / 2, height / 2));
+}
+
+/* Wrap a node name into up to 3 lines of <= MAX_CHARS, appending an ellipsis if truncated. */
+function wrapLabel(text) {
+  const MAX_LINES = 3;
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  for (const w of words) {
+    if (lines.length >= MAX_LINES) break;
+    const last = lines[lines.length - 1];
+    if (last && (last + " " + w).length <= MAX_CHARS) {
+      lines[lines.length - 1] = last + " " + w;
+    } else if (w.length <= MAX_CHARS) {
+      lines.push(w);
+    } else {
+      let rest = w;
+      while (rest.length > MAX_CHARS && lines.length < MAX_LINES) {
+        lines.push(rest.slice(0, MAX_CHARS));
+        rest = rest.slice(MAX_CHARS);
+      }
+      if (rest && lines.length < MAX_LINES) lines.push(rest);
+    }
+  }
+  if (lines.length > MAX_LINES) lines.length = MAX_LINES;
+  if (lines.join(" ").length < String(text).trim().length) {
+    let last = lines[lines.length - 1] || "";
+    if (last.length > MAX_CHARS - 1) last = last.slice(0, MAX_CHARS - 1);
+    lines[lines.length - 1] = last + "\u2026";
+  }
+  return lines.filter(Boolean);
+}
+
+/* Compute wrapped lines and bubble dimensions for every node in the hierarchy. */
+function computeBubbleSizes(root) {
+  root.descendants().forEach(d => {
+    d._lines = wrapLabel(d.data.name);
+    const maxLen = d._lines.length ? Math.max(...d._lines.map(l => l.length)) : 0;
+    d._bw = Math.max(maxLen * CHAR_W + PAD_X * 2, MIN_BUBBLE_W);
+    d._bh = d._lines.length * LINE_H + PAD_Y * 2;
+  });
+}
+
+/* Assign a radius to each depth so adjacent levels never overlap radially and
+   siblings at the busiest level never overlap tangentially. */
+function computeLevelRadii(root) {
+  const depthCounts = {};
+  let maxDepth = 0;
+  root.descendants().forEach(d => {
+    depthCounts[d.depth] = (depthCounts[d.depth] || 0) + 1;
+    if (d.depth > maxDepth) maxDepth = d.depth;
+  });
+  const maxW = Math.max(...root.descendants().map(d => d._bw));
+  const maxH = Math.max(...root.descendants().map(d => d._bh));
+  const radii = [0];
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    const tangential = (maxW + TANG_GAP) * (depthCounts[depth] || 1) / (2 * Math.PI);
+    const radial = radii[depth - 1] + maxH + RADIAL_GAP;
+    radii[depth] = Math.max(tangential, radial);
+  }
+  return radii;
+}
+
+function renderGraph() {
+  if (!svg) initGraph();
+
+  gLinks.selectAll("*").remove();
+  gNodes.selectAll("*").remove();
+
+  if (!treeData || !treeData.name) return;
+
+  const d3Data = toD3Data(treeData);
+  const root = d3.hierarchy(d3Data);
+
+  computeBubbleSizes(root);
+  const levelRadius = computeLevelRadii(root);
+
+  const treeLayout = d3.tree()
+    .size([2 * Math.PI, 1])
+    .separation((a, b) => (a.parent === b.parent ? 1.6 : 2.6));
+
+  treeLayout(root);
+  root.descendants().forEach(d => { d.y = levelRadius[d.depth]; });
+
+  const linkGen = d3.linkRadial()
+    .angle(d => d.x)
+    .radius(d => d.y);
+
+  gLinks.selectAll("path")
+    .data(root.links())
+    .join("path")
+    .attr("class", "link")
+    .attr("d", linkGen);
+
+  const nodeGroups = gNodes.selectAll("g")
+    .data(root.descendants())
+    .join("g")
+    .attr("transform", d => `translate(${d.y * Math.sin(d.x)},${-d.y * Math.cos(d.x)})`);
+
+  nodeGroups.each(function(d) {
+    const g = d3.select(this);
+    const isRoot = d.depth === 0;
+    const selected = d.data._id === selectedNodeId;
+    const lines = d._lines;
+    const bw = d._bw;
+    const bh = d._bh;
+
+    g.append("rect")
+      .attr("class", "node-bubble")
+      .attr("x", -bw / 2)
+      .attr("y", -bh / 2)
+      .attr("width", bw)
+      .attr("height", bh)
+      .attr("rx", 8)
+      .attr("ry", 8)
+      .attr("fill", isRoot ? "#2c3e50" : (d.children ? "#3498db" : "#95a5a6"))
+      .attr("stroke", selected ? "#e74c3c" : "#fff")
+      .attr("stroke-width", selected ? 3 : 1.5)
+      .on("click", (e) => {
+        e.stopPropagation();
+        selectNode(d.data._id);
+        expandPathTo(d);
+      });
+
+    const text = g.append("text")
+      .attr("class", "node-text")
+      .attr("y", -(lines.length - 1) * LINE_H / 2);
+
+    lines.forEach((line, i) => {
+      text.append("tspan")
+        .attr("x", 0)
+        .attr("dy", i === 0 ? 0 : LINE_H)
+        .text(line);
+    });
+  });
+
+  fitGraph();
+}
+
+function fitGraph() {
+  if (!gZoom || !svg) return;
+  const svgEl = document.getElementById("graph-svg");
+  const width = svgEl.clientWidth;
+  const height = svgEl.clientHeight;
+  if (!width || !height) return;
+  const bbox = gZoom.node().getBBox();
+  if (!isFinite(bbox.width) || bbox.width === 0 || !isFinite(bbox.height) || bbox.height === 0) return;
+  const PAD = 60;
+  const scale = Math.min((width - PAD * 2) / bbox.width, (height - PAD * 2) / bbox.height);
+  const s = Math.max(0.2, Math.min(scale, 5));
+  const cx = bbox.x + bbox.width / 2;
+  const cy = bbox.y + bbox.height / 2;
+  const tx = width / 2 - cx * s;
+  const ty = height / 2 - cy * s;
+  svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(s));
+}
+
+function highlightGraphNode(id) {
+  if (!gNodes) return;
+  gNodes.selectAll("g").each(function(d) {
+    const g = d3.select(this);
+    const selected = d.data._id === id;
+    g.select("rect")
+      .attr("stroke", selected ? "#e74c3c" : "#fff")
+      .attr("stroke-width", selected ? 3 : 1.5);
+  });
+}
+
+function expandPathTo(d) {
+  let current = d.parent;
+  while (current) {
+    const orig = findNode(current.data._id);
+    if (orig && !orig._expanded) {
+      orig._expanded = true;
+    }
+    current = current.parent;
+  }
+  renderTreeEditor();
+}
+
+/* ── Resize Handle ───────────────────────────────── */
+(function initResize() {
+  const handle = document.getElementById("resize-handle");
+  const treePane = document.getElementById("tree-pane");
+  let startX, startWidth;
+
+  handle.addEventListener("mousedown", (e) => {
+    startX = e.clientX;
+    startWidth = treePane.offsetWidth;
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  });
+
+  function onMove(e) {
+    const newWidth = Math.max(200, startWidth + e.clientX - startX);
+    treePane.style.width = newWidth + "px";
+  }
+
+  function onUp() {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    renderGraph();
+  }
+})();
+
+/* ── Export ───────────────────────────────────────── */
+document.getElementById("export-btn").addEventListener("click", () => {
+  const yaml = serializeYaml(treeData);
+  const blob = new Blob([yaml], { type: "text/yaml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "components.yml";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ── Add Root Button ──────────────────────────────── */
+document.getElementById("add-root-btn").addEventListener("click", () => {
+  if (treeData && treeData._children && treeData._children.length > 0) return;
+  if (!treeData || !treeData.name) {
+    treeData = { name: "Data", children: [], _id: generateId(), _expanded: true, _children: [] };
+    nodeMap.set(treeData._id, treeData);
+  }
+  renderTreeEditor();
+  renderGraph();
+});
+
+/* ── Init ────────────────────────────────────────── */
+async function init() {
+  try {
+    const resp = await fetch(YAML_URL);
+    const text = await resp.text();
+    treeData = parseYaml(text);
+    assignIds(treeData);
+    renderTreeEditor();
+    setTimeout(() => { initGraph(); renderGraph(); }, 50);
+  } catch (err) {
+    document.getElementById("tree-content").innerHTML =
+      '<div class="empty-state">Failed to load components.yml<br><small>' + err.message + "</small></div>";
+  }
+}
+
+window.addEventListener("resize", () => { renderGraph(); });
+init();
+</script>
+</body>
+</html>
